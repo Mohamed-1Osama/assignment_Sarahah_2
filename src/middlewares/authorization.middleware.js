@@ -1,32 +1,46 @@
-const { ForbiddenError } = require('../utils/ApiError');
 
-/**
- * Authorization Middleware: "are you allowed to do this?"
- * Runs AFTER authenticate(), which sets req.user.
- * Usage: router.delete('/:id', authenticate, authorize('admin'), ctrl.remove)
- */
-const authorize = (...allowedRoles) => (req, res, next) => {
-  if (!req.user) {
-    // Programmer error: authorize() used without authenticate() before it.
-    return next(new ForbiddenError('Authentication is required before authorization'));
-  }
-  if (!allowedRoles.includes(req.user.role)) {
-    return next(new ForbiddenError('You do not have permission to perform this action'));
-  }
-  next();
+import HttpAppError from "../Common/Utils/Errors/app.error.js";
+import { USER_ROLES } from "../Common/constants.js";
+
+export const authorization = (allowedRoles = []) => {
+    return (req, res, next) => {
+        try {
+            // Check if user is authenticated
+            if (!req.user) {
+                throw new HttpAppError(
+                    "Authentication required",
+                    401,
+                    {},
+                    "UNAUTHORIZED"
+                );
+            }
+
+            // Validate allowed roles configuration
+            if (
+                !Array.isArray(allowedRoles) ||
+                allowedRoles.length === 0
+            ) {
+                throw new HttpAppError(
+                    "No roles configured for this resource",
+                    500,
+                    {},
+                    "INTERNAL_SERVER_ERROR"
+                );
+            }
+
+            // Check if user's role is allowed
+            if (!allowedRoles.includes(req.user.role)) {
+                throw new HttpAppError(
+                    "You are not allowed to access this resource",
+                    403,
+                    {},
+                    "FORBIDDEN"
+                );
+            }
+
+            next();
+        } catch (error) {
+            return next(error);
+        }
+    };
 };
-
-/**
- * Ownership check: lets a user act on their own resource even without
- * an elevated role (e.g. delete your own message), OR any allowed role.
- */
-const authorizeOwnerOrRoles = (getOwnerId, ...allowedRoles) => (req, res, next) => {
-  if (!req.user) return next(new ForbiddenError('Authentication is required'));
-  const ownerId = getOwnerId(req);
-  if (req.user._id === ownerId || allowedRoles.includes(req.user.role)) {
-    return next();
-  }
-  next(new ForbiddenError('You do not have permission to perform this action'));
-};
-
-module.exports = { authorize, authorizeOwnerOrRoles };
